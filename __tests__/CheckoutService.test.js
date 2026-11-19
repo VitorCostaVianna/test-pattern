@@ -10,23 +10,19 @@ describe('CheckoutService', () => {
     describe('quando o pagamento falha', () => {
         let carrinho;
         let gatewayStub;
-        let repositoryDummy;
-        let emailServiceDummy;
-        let checkoutService;
 
         beforeEach(() => {
             carrinho = new CarrinhoBuilder().build();
             // Stub: fornece resposta pronta de pagamento recusado
             gatewayStub = { cobrar: jest.fn().mockResolvedValue({ success: false }) };
-            // Dummy: só preenche o construtor, não deve ser usado
-            repositoryDummy = { salvar: jest.fn() };
-            // Dummy: só preenche o construtor, não deve ser usado
-            emailServiceDummy = { enviarEmail: jest.fn() };
-            checkoutService = new CheckoutService(gatewayStub, repositoryDummy, emailServiceDummy);
         });
 
         it('deve retornar null', async () => {
-            // Arrange (feito no beforeEach)
+            // Arrange
+            // Dummies: objetos vazios, só preenchem o construtor e não devem ser usados
+            const repositoryDummy = {};
+            const emailServiceDummy = {};
+            const checkoutService = new CheckoutService(gatewayStub, repositoryDummy, emailServiceDummy);
 
             // Act
             const pedido = await checkoutService.processarPedido(carrinho, cartaoCredito);
@@ -36,14 +32,42 @@ describe('CheckoutService', () => {
         });
 
         it('não deve salvar o pedido nem enviar e-mail', async () => {
-            // Arrange (feito no beforeEach)
+            // Arrange
+            // Aqui os colaboradores são jest.fn() (spies), pois a verificação é que NÃO foram chamados
+            const repositorySpy = { salvar: jest.fn() };
+            const emailServiceSpy = { enviarEmail: jest.fn() };
+            const checkoutService = new CheckoutService(gatewayStub, repositorySpy, emailServiceSpy);
 
             // Act
             await checkoutService.processarPedido(carrinho, cartaoCredito);
 
+            // Assert (verificação de comportamento)
+            expect(repositorySpy.salvar).not.toHaveBeenCalled();
+            expect(emailServiceSpy.enviarEmail).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('quando o carrinho está vazio', () => {
+        it('deve cobrar o valor zero, pois o SUT não valida carrinho vazio', async () => {
+            // Arrange
+            const carrinhoVazio = new CarrinhoBuilder().vazio().build();
+            // Stub: pagamento aprovado
+            const gatewayStub = { cobrar: jest.fn().mockResolvedValue({ success: true }) };
+            // Stub: devolve o pedido recebido com um id atribuído
+            const repositoryStub = {
+                salvar: jest.fn().mockImplementation(async (pedido) =>
+                    new Pedido(1, pedido.carrinho, pedido.totalFinal, pedido.status)),
+            };
+            // Stub: e-mail enviado sem erro (não é o foco deste teste)
+            const emailServiceStub = { enviarEmail: jest.fn().mockResolvedValue(undefined) };
+            const checkoutService = new CheckoutService(gatewayStub, repositoryStub, emailServiceStub);
+
+            // Act
+            const pedido = await checkoutService.processarPedido(carrinhoVazio, cartaoCredito);
+
             // Assert
-            expect(repositoryDummy.salvar).not.toHaveBeenCalled();
-            expect(emailServiceDummy.enviarEmail).not.toHaveBeenCalled();
+            expect(gatewayStub.cobrar).toHaveBeenCalledWith(0, cartaoCredito);
+            expect(pedido.totalFinal).toBe(0);
         });
     });
 
